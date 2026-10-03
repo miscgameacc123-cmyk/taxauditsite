@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tax Audit Suite</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@500;600&family=Fraunces:wght@600&display=swap">
+<style>
+:root{--bg:#f4f5f7;--ink:#1c2230;--mute:#667085;--line:#d8dce3;--acc:#1b6b58}
+@media (prefers-color-scheme:dark){:root{--bg:#12161d;--ink:#e8ebf0;--mute:#98a2b3;--line:#323a47;--acc:#59c3a5}}
+html,body{height:100%;margin:0}body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:500 14px "IBM Plex Sans",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:20px;padding:0 20px;border-bottom:1px solid var(--line);overflow-x:auto}
+h1{font:600 18px Fraunces,Georgia,serif;margin:0;white-space:nowrap}
+nav{display:flex}nav a{padding:14px 14px;color:var(--mute);text-decoration:none;border-bottom:3px solid transparent;white-space:nowrap}
+nav a[aria-current=page]{color:var(--acc);border-color:var(--acc)}nav a:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+iframe{flex:1;border:0;width:100%;background:var(--bg)}
+</style></head><body>
+<header><h1>Tax Audit Suite</h1><nav id="n"></nav></header>
+<iframe id="f" title="Tool"></iframe>
+<script>
+const T=[['tds-and-assets','TDS reconciliation and fixed assets'],['msme-and-44ab','MSME interest, 44AB and checklist'],['3cb-3cd','Form 3CB-3CD builder']];
+const n=document.getElementById('n'),f=document.getElementById('f');
+T.forEach(([k,l])=>{const a=document.createElement('a');a.href='#'+k;a.textContent=l;n.appendChild(a)});
+function go(){const k=T.some(t=>t[0]==location.hash.slice(1))?location.hash.slice(1):T[0][0];f.src='tools/'+k+'.html';[...n.children].forEach(a=>a.removeAttribute('aria-current'));n.querySelector(`[href="#${k}"]`).setAttribute('aria-current','page')}
+addEventListener('hashchange',go);go();
+</script></body></html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tax Audit Suite: TDS reconciliation and asset depreciation</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Fraunces:wght@600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1c2230;--mute:#667085;--line:#d8dce3;--acc:#1b6b58;--accbg:#e2f1ec;--bad:#b3402a;--badbg:#fbe9e4;--wr:#7a5500;--wrbg:#fdf3d9}
+@media (prefers-color-scheme:dark){:root{--bg:#12161d;--card:#1b212b;--ink:#e8ebf0;--mute:#98a2b3;--line:#323a47;--acc:#59c3a5;--accbg:#173a31;--bad:#f09a86;--badbg:#3f2019;--wr:#e8c365;--wrbg:#3a2f12}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+header,main{max-width:1200px;margin:auto;padding:20px}header{padding-bottom:0}
+h1{font:600 26px/1.2 Fraunces,Georgia,serif;margin:0 0 4px}h2{font-size:17px;margin:0 0 4px}h3{font-size:15px;margin:16px 0 6px}
+.mute{color:var(--mute);font-size:13px;margin:0 0 10px}
+nav{display:flex;gap:2px;max-width:1200px;margin:14px auto 0;padding:0 20px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:500 14px "IBM Plex Sans",sans-serif;color:var(--mute);cursor:pointer}
+nav button[aria-selected=true]{color:var(--acc);border-color:var(--acc)}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+label{display:block;font-size:13px;color:var(--mute);margin-bottom:3px}
+input,select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink);font:inherit}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn{background:var(--acc);color:var(--bg);border:0;border-radius:5px;padding:8px 14px;font:500 14px "IBM Plex Sans",sans-serif;cursor:pointer;margin:8px 8px 0 0}
+.btn.alt{background:none;color:var(--acc);border:1px solid var(--acc)}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--mute);font-weight:500}
+.n{text-align:right}td input,td select{min-width:100px}tfoot td{font-weight:600;border-top:2px solid var(--ink)}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px}.ok{background:var(--accbg);color:var(--acc)}.bad{background:var(--badbg);color:var(--bad)}.wr{background:var(--wrbg);color:var(--wr)}
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:10px}
+</style>
+</head>
+<body>
+<header><h1>Tax Audit Suite</h1>
+<p class="mute">Upload your files and the calculations run in the browser. Nothing is sent to a server.</p></header>
+<nav id="nav"><button data-t="tds">TDS reconciliation</button><button data-t="fa">Fixed assets</button></nav>
+<main>
+<section id="tds">
+<div class="card"><h2>1. Import files</h2>
+<p class="mute">Accepts .xlsx, .xls, .csv, .tsv and .txt (including the caret-separated 26AS text file). Column headings are detected automatically; fix any wrong match using the dropdowns. PDFs must be converted to Excel first.</p>
+<div class="grid">
+<div><label>Books / ledger file (party, amount, optional date)</label><input type="file" id="fa_A" accept=".xlsx,.xls,.csv,.tsv,.txt"><div class="map" id="mp_A"></div></div>
+<div><label>Form 26AS / AIS / TDS file (party, gross, TDS, dates)</label><input type="file" id="fa_B" accept=".xlsx,.xls,.csv,.tsv,.txt"><div class="map" id="mp_B"></div></div>
+</div></div>
+<div class="card"><h2>2. Settings</h2><div class="grid">
+<div><label>Interest calculated up to (for undeposited or undeducted tax)</label><input type="date" id="asof"></div>
+<div><label>Default expected TDS rate % (used when the file has no rate column; 0 skips short-deduction checks)</label><input type="number" id="drate" value="0" step="0.1"></div>
+<div><label>Matching tolerance (₹)</label><input type="number" id="tol" value="1"></div></div>
+<button class="btn" id="run">Reconcile</button><button class="btn alt" id="exp">Download Excel</button>
+<p class="mute" style="margin-top:10px">Interest, s.201(1A): 1% a month from the date tax was deductible to the date it was deducted (or to the date above if never deducted); 1.5% a month from deduction to deposit when deposited after the 7th of the next month (30 April for March). Each month or part month counts as a full month. Late filing fee under s.234E is not calculated.</p></div>
+<div class="card tw" id="tout"></div>
+</section>
+
+<section id="fa">
+<div class="card"><h2>Asset register</h2>
+<p class="mute">Add each asset with its purchase and use dates. The block is picked from the asset type and can be changed. Assets bought before the year start belong in the opening WDV below; enter them here only if sold this year.</p>
+<div class="grid"><div><label>Financial year starting 1 April</label><input type="number" id="fy" value="2025"></div>
+<div><label>Import assets from Excel/CSV</label><input type="file" id="fa_C" accept=".xlsx,.xls,.csv,.tsv,.txt"><div class="map" id="mp_C"></div></div></div>
+<div class="tw"><table><thead><tr><th>Asset</th><th>Asset type</th><th>Block</th><th>Purchase date</th><th>Put to use</th><th class="n">Cost ₹</th><th>Sale date</th><th class="n">Sale value ₹</th><th>Treatment</th><th></th></tr></thead><tbody id="ab"></tbody></table></div>
+<button class="btn alt" id="aadd">Add asset</button><button class="btn" id="acalc">Calculate depreciation</button><button class="btn alt" id="aexp">Download Excel</button></div>
+<div class="card"><h2>Opening WDV by block</h2><div class="tw"><table><thead><tr><th>Block</th><th class="n">Rate %</th><th class="n">Opening WDV ₹</th></tr></thead><tbody id="ob"></tbody></table></div></div>
+<div class="card tw" id="aout"></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id),F=n=>(+n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}),N=v=>parseFloat(String(v??'').replace(/[₹,\s]/g,''))||0;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x==b));['tds','fa'].forEach(k=>$(k).classList.toggle('on',k==b.dataset.t))});
+document.querySelector('nav button').click();
+$('asof').value=new Date().toISOString().slice(0,10);
+
+/* ---------- file reading and column mapping ---------- */
+const S={};
+async function readFile(f){
+ const ext=f.name.split('.').pop().toLowerCase();let rows;
+ if(['xlsx','xls'].includes(ext)){const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}
+ else{const t=(await f.text()).replace(/^\uFEFF/,''),L=t.split(/\r?\n/).filter(l=>l.trim()),fl=L[0]||'';
+  const d=['^','\t','|',';',','].map(c=>[c,fl.split(c).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  rows=L.map(l=>l.split(d).map(x=>x.trim().replace(/^"|"$/g,'')))}
+ rows=rows.filter(r=>r.some(c=>String(c).trim()!==''));
+ return{head:(rows[0]||[]).map(x=>String(x).trim()),rows:rows.slice(1)}}
+function attach(id,fields){
+ $('fa_'+id).onchange=async e=>{const f=e.target.files[0];if(!f)return;const d=await readFile(f);d.map={};
+  fields.forEach(([k,l,re])=>{const i=d.head.findIndex(h=>re.test(h));d.map[k]=i});S[id]={...d,fields};drawMap(id)}}
+function drawMap(id){const d=S[id];$('mp_'+id).innerHTML=d.fields.map(([k,l])=>`<div><label>${l}</label><select data-k="${k}"><option value="-1">(none)</option>${d.head.map((h,i)=>`<option value="${i}" ${d.map[k]==i?'selected':''}>${esc(h||'Column '+(i+1))}</option>`).join('')}</select></div>`).join('')+`<p class="mute">${d.rows.length} rows read</p>`;
+ $('mp_'+id).onchange=e=>{d.map[e.target.dataset.k]=+e.target.value}}
+const col=(d,r,k)=>d.map[k]>=0?r[d.map[k]]:'';
+/* dates held as UTC milliseconds */
+function pd(v){if(v==null||v==='')return null;if(v instanceof Date)return Date.UTC(v.getFullYear(),v.getMonth(),v.getDate());
+ if(typeof v=='number'&&v>20000&&v<80000)return Math.round((v-25569)*864e5);
+ let m=String(v).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;return Date.UTC(y,m[2]-1,+m[1])}
+ m=String(v).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return Date.UTC(+m[1],m[2]-1,+m[3]);
+ m=String(v).trim().match(/^(\d{1,2})[\- ]([A-Za-z]{3})[a-z]*[\- ](\d{2,4})/);if(m){const mo='janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(m[2].toLowerCase())/3;if(mo>=0){let y=+m[3];if(y<100)y+=2000;return Date.UTC(y,mo,+m[1])}}return null}
+const iso=t=>t==null?'':new Date(t).toISOString().slice(0,10),fmtD=t=>t==null?'':new Date(t).toLocaleDateString('en-GB',{timeZone:'UTC'});
+function months(a,b){if(a==null||b==null||b<=a)return 0;const x=new Date(a),y=new Date(b);let m=(y.getUTCFullYear()-x.getUTCFullYear())*12+y.getUTCMonth()-x.getUTCMonth();if(y.getUTCDate()>x.getUTCDate())m++;return Math.max(m,1)}
+const dueDep=t=>{const d=new Date(t),m=d.getUTCMonth();return m==2?Date.UTC(d.getUTCFullYear(),3,30):Date.UTC(d.getUTCFullYear(),m+1,7)};
+const key=s=>String(s).toLowerCase().replace(/\b(pvt|private|ltd|limited|llp|m\/s|messrs)\b/g,'').replace(/[^a-z0-9]/g,'');
+
+/* ---------- TDS reconciliation ---------- */
+attach('A',[['p','Party / PAN / TAN',/party|name|ledger|customer|deductor|pan|tan/i],['a','Amount',/amount|sales|value|credit|taxable|total/i],['d','Date (optional)',/date/i]]);
+attach('B',[['p','Party / PAN / TAN',/deductor|name|party|tan|pan/i],['g','Gross amount credited',/gross|amount.*(paid|credit)|paid.*credit|amount/i],['t','TDS deducted',/tax.*deduct|tds|deducted/i],['c','Credit / payment date',/(paid|credit|payment).*date|date.*(paid|credit)|booking/i],['dd','Deduction date',/deduct.*date|date.*deduct/i],['dp','Deposit date',/deposit.*date|date.*deposit/i],['r','Expected rate % (optional)',/rate/i],['s','Section (optional)',/section/i]]);
+let RES=null;
+$('run').onclick=()=>{
+ if(!S.A||!S.B){$('tout').innerHTML='<p class="mute">Import both files first.</p>';return}
+ const asof=pd($('asof').value),dr=N($('drate').value),tol=N($('tol').value),M={};
+ const get=(k,n)=>M[k]||(M[k]={n,b:0,g:0,t:0,i1:0,i2:0,hb:0,hg:0,note:[]});
+ S.A.rows.forEach(r=>{const n=col(S.A,r,'p');if(!n)return;const o=get(key(n),n);o.b+=N(col(S.A,r,'a'));o.hb=1});
+ const det=[];
+ S.B.rows.forEach(r=>{const n=col(S.B,r,'p');if(!n)return;const o=get(key(n),n),g=N(col(S.B,r,'g')),t=N(col(S.B,r,'t')),c=pd(col(S.B,r,'c')),dd=pd(col(S.B,r,'dd')),dp=pd(col(S.B,r,'dp')),rt=N(col(S.B,r,'r'))||dr;
+  o.g+=g;o.t+=t;o.hg=1;let i1=0,i2=0,nt=[];
+  const short=rt?Math.max(0,g*rt/100-t):0;
+  if(c&&short>1){const to=(t>0&&dd)?dd:asof;i1=short*.01*months(c,to);nt.push(t>0?'Short deduction':'TDS not deducted')}
+  else if(c&&dd&&dd>c&&t>0){i1=t*.01*months(c,dd);nt.push('Late deduction')}
+  if(t>0&&dd){const due=dueDep(dd),dep=dp||asof;if(dep>due){i2=t*.015*months(dd,dep);nt.push(dp?'Late deposit':'Not deposited')}}
+  o.i1+=i1;o.i2+=i2;o.note.push(...nt);det.push({Party:n,Gross:g,TDS:t,'Credit date':fmtD(c),'Deduction date':fmtD(dd),'Deposit date':fmtD(dp),'Interest 1%':i1,'Interest 1.5%':i2,Remark:nt.join(', ')})});
+ const L=Object.values(M).map(x=>{const d=x.b-x.g;let s,c;
+  if(!x.hg){s='In books only';c='wr'}else if(!x.hb){s='In 26AS only: check unrecorded income';c='bad'}else if(Math.abs(d)<=tol){s='Matched';c='ok'}else if(d>0){s='Books higher';c='wr'}else{s='26AS higher';c='bad'}
+  return{...x,d,s,c}}).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+ RES={L,det};const T=L.reduce((a,x)=>(a[0]+=x.b,a[1]+=x.g,a[2]+=x.d,a[3]+=x.t,a[4]+=x.i1,a[5]+=x.i2,a),[0,0,0,0,0,0]);
+ $('tout').innerHTML=`<table><thead><tr><th>Party</th><th class="n">Books</th><th class="n">26AS gross</th><th class="n">Difference</th><th class="n">TDS</th><th class="n">Interest 1%</th><th class="n">Interest 1.5%</th><th>Status</th><th>Interest reason</th></tr></thead><tbody>${L.map(x=>`<tr><td>${esc(x.n)}</td><td class="n">${F(x.b)}</td><td class="n">${F(x.g)}</td><td class="n">${F(x.d)}</td><td class="n">${F(x.t)}</td><td class="n">${F(x.i1)}</td><td class="n">${F(x.i2)}</td><td><span class="tag ${x.c}">${x.s}</span></td><td>${[...new Set(x.note)].join(', ')}</td></tr>`).join('')}</tbody><tfoot><tr><td>Total</td>${T.map(v=>`<td class="n">${F(v)}</td>`).join('')}<td colspan="2">Total interest ${F(T[4]+T[5])}</td></tr></tfoot></table>`};
+$('exp').onclick=()=>{if(!RES)return;const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(RES.L.map(x=>({Party:x.n,Books:x.b,'26AS gross':x.g,Difference:x.d,TDS:x.t,'Interest 1%':x.i1,'Interest 1.5%':x.i2,Status:x.s}))),'Reconciliation');
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(RES.det),'Interest detail');XLSX.writeFile(wb,'tds-reconciliation.xlsx')};
+
+/* ---------- Fixed assets ---------- */
+const BL=[['Building: residential',5],['Building: other than residential',10],['Building: temporary structures',40],['Furniture and fittings',10],['Plant and machinery (general)',15],['Motor cars (not for hire)',15],['Motor buses, lorries, taxis (on hire)',30],['Computers incl. software',40],['Intangibles (patents, licences, goodwill)',25],['Ships',20],['Aircraft and aero engines',40],['Pollution control equipment',40],['Energy-saving devices',40],['Books: annual publications',40],['Books: others',40]];
+const CT=[['Office building',1],['Residential building',0],['Factory shed / godown',1],['Temporary shed / wooden structure',2],['Furniture',3],['Fittings / electrical installation',3],['Plant and machinery',4],['Air conditioner',4],['Mobile phone (taken as P&M; some use computers)',4],['Tools / equipment / CCTV / generator',4],['Car / two-wheeler',5],['Bus / truck / taxi on hire',6],['Laptop / desktop / server',7],['Printer / scanner / peripherals',7],['Software',7],['Patent / trademark / licence / goodwill',8],['Ship',9],['Aircraft',10],['Pollution control equipment',11],['Energy-saving device',12],['Books: annual publication',13],['Books: others',14]];
+$('ob').innerHTML=BL.map((b,i)=>`<tr><td>${b[0]}</td><td class="n">${b[1]}</td><td><input type="number" class="op" data-i="${i}" value="0"></td></tr>`).join('');
+const opt=(a,sel)=>a.map((x,i)=>`<option value="${i}" ${i==sel?'selected':''}>${esc(x[0])}</option>`).join('');
+function addAsset(v={}){const tr=document.createElement('tr'),ci=v.cat??6;
+ tr.innerHTML=`<td><input class="d" value="${esc(v.desc||'')}"></td><td><select class="c">${opt(CT,ci)}</select></td><td><select class="b">${opt(BL,v.blk??CT[ci][1])}</select></td><td><input type="date" class="pu" value="${v.pu||''}"></td><td><input type="date" class="us" value="${v.us||''}"></td><td><input type="number" class="co" value="${v.co||''}"></td><td><input type="date" class="sd" value="${v.sd||''}"></td><td><input type="number" class="sv" value="${v.sv||''}"></td><td class="tr"></td><td><button class="btn alt" style="margin:0">Remove</button></td>`;
+ tr.querySelector('.c').onchange=e=>tr.querySelector('.b').value=CT[e.target.value][1];tr.querySelector('button').onclick=()=>tr.remove();$('ab').appendChild(tr)}
+$('aadd').onclick=()=>addAsset();addAsset();
+attach('C',[['d','Asset description',/asset|desc|name|particular/i],['c','Asset type / category',/type|categ|class|block/i],['pu','Purchase date',/purchase|acqui|invoice|bill/i],['us','Date put to use',/use|install|commission/i],['co','Cost',/cost|amount|value|price/i],['sd','Sale date',/sale.*date|sold|disposal.*date/i],['sv','Sale value',/sale.*(value|amount|proceed)|proceed|disposal.*(value|amount)/i]]);
+$('mp_C').addEventListener('change',()=>{});
+$('fa_C').addEventListener('change',()=>setTimeout(()=>{const b=document.createElement('button');b.className='btn';b.textContent='Load rows into register';b.onclick=()=>{const d=S.C;d.rows.forEach(r=>{const g=k=>col(d,r,k),t=String(g('c')).toLowerCase();
+  let ci=CT.findIndex(c=>t&&c[0].toLowerCase().includes(t));if(ci<0){const bi=BL.findIndex(x=>t&&x[0].toLowerCase().includes(t));ci=bi>=0?CT.findIndex(c=>c[1]==bi):6}
+  addAsset({desc:g('d'),cat:ci<0?6:ci,pu:iso(pd(g('pu'))),us:iso(pd(g('us'))),co:N(g('co')),sd:iso(pd(g('sd'))),sv:N(g('sv'))})});b.remove()};$('mp_C').appendChild(b)},300));
+let AR=null;
+$('acalc').onclick=()=>{const y=+$('fy').value,fs=Date.UTC(y,3,1),fe=Date.UTC(y+1,2,31),B=BL.map((b,i)=>({n:b[0],r:b[1],o:N(document.querySelector(`.op[data-i="${i}"]`).value),f:0,h:0,s:0,used:0})),A=[];
+ $('ab').querySelectorAll('tr').forEach(tr=>{const q=c=>tr.querySelector('.'+c).value,bi=+q('b'),pu=pd(q('pu')),us=pd(q('us'))||pu,co=N(q('co')),sd=pd(q('sd')),sv=N(q('sv')),x=B[bi];let t='',days='';
+  if(pu!=null&&pu>=fs&&pu<=fe&&co){if(us>fe)t='Not put to use in the year: no depreciation';else{days=Math.round((fe-us)/864e5)+1;if(days>=180){x.f+=co;t='Addition, used '+days+' days: full rate'}else{x.h+=co;t='Addition, used '+days+' days: half rate'}}}
+  else if(pu!=null&&pu<fs)t='Opening asset (cost sits in opening WDV)';else if(pu!=null&&pu>fe)t='Purchased after year end: excluded';else if(co)t='Add a purchase date';
+  if(sd!=null&&sv){if(sd>=fs&&sd<=fe){x.s+=sv;t+=(t?'; ':'')+'Sold: reduces block'}else t+=(t?'; ':'')+'Sale date outside year: ignored'}
+  tr.querySelector('.tr').textContent=t;A.push({Asset:q('d'),Block:x.n,'Purchase':fmtD(pu),'Put to use':fmtD(us),Cost:co,'Days used':days,'Sale date':fmtD(sd),'Sale value':sv,Treatment:t})});
+ let T=[0,0,0,0,0,0,0];const R=B.map(x=>{const W=x.o+x.f+x.h-x.s;let d=0,nt='';if(W<0)nt='Negative WDV: short-term capital gain u/s 50 of '+F(-W);else{const h=Math.min(x.h,W);d=x.r/100*(W-h)+x.r/200*h}
+  const c=Math.max(W-d,0);[x.o,x.f,x.h,x.s,d,c].forEach((v,i)=>T[i]+=v);return{Block:x.n,Rate:x.r,Opening:x.o,'Additions full':x.f,'Additions half':x.h,Sales:x.s,Depreciation:d,Closing:c,Note:nt}}).filter(r=>r.Opening||r['Additions full']||r['Additions half']||r.Sales);
+ AR={R,A};$('aout').innerHTML=`<h2>Block-wise depreciation, FY ${y}-${String(y+1).slice(2)}</h2><table><thead><tr><th>Block</th><th class="n">Rate</th><th class="n">Opening</th><th class="n">Additions (full)</th><th class="n">Additions (half)</th><th class="n">Sales</th><th class="n">Depreciation</th><th class="n">Closing WDV</th><th>Note</th></tr></thead><tbody>${R.map(r=>`<tr><td>${r.Block}</td><td class="n">${r.Rate}%</td>${['Opening','Additions full','Additions half','Sales','Depreciation','Closing'].map(k=>`<td class="n">${F(r[k])}</td>`).join('')}<td>${r.Note}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="2">Total</td>${[0,1,2,3,4,5].map(i=>`<td class="n">${F(T[i])}</td>`).join('')}<td></td></tr></tfoot></table>`};
+$('aexp').onclick=()=>{if(!AR)return;const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(AR.R),'Block summary');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(AR.A),'Asset register');XLSX.writeFile(wb,'depreciation.xlsx')};
+</script>
+</body>
+</html>

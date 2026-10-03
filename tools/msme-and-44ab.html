@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tax Audit Toolkit (India, s.44AB)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Fraunces:wght@600&display=swap">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f4f5f7;--card:#fff;--ink:#1c2230;--mute:#667085;--line:#d8dce3;--acc:#1b6b58;--accbg:#e2f1ec;--bad:#b3402a;--badbg:#fbe9e4;--warn:#8a6100;--warnbg:#fdf3d9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161d;--card:#1b212b;--ink:#e8ebf0;--mute:#98a2b3;--line:#323a47;--acc:#59c3a5;--accbg:#173a31;--bad:#f09a86;--badbg:#3f2019;--warn:#e8c365;--warnbg:#3a2f12}}
+:root[data-theme="dark"]{--bg:#12161d;--card:#1b212b;--ink:#e8ebf0;--mute:#98a2b3;--line:#323a47;--acc:#59c3a5;--accbg:#173a31;--bad:#f09a86;--badbg:#3f2019;--warn:#e8c365;--warnbg:#3a2f12}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+header{padding:22px 20px 0;max-width:1100px;margin:auto}
+h1{font:600 26px/1.2 Fraunces,Georgia,serif;margin:0 0 4px}
+header p{margin:0;color:var(--mute);max-width:70ch}
+nav{display:flex;gap:2px;overflow-x:auto;max-width:1100px;margin:16px auto 0;padding:0 20px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:500 14px inherit;font-family:inherit;color:var(--mute);cursor:pointer;white-space:nowrap}
+nav button[aria-selected=true]{color:var(--acc);border-color:var(--acc)}
+main{max-width:1100px;margin:auto;padding:20px}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+h2{font-size:17px;margin:0 0 4px}.hint{color:var(--mute);font-size:13px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+label{display:block;font-size:13px;color:var(--mute);margin-bottom:3px}
+input,select,textarea{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:130px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn{background:var(--acc);color:var(--bg);border:0;border-radius:5px;padding:8px 14px;font:500 14px inherit;font-family:inherit;cursor:pointer}
+.btn.alt{background:none;color:var(--acc);border:1px solid var(--acc)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mute);font-weight:500}td.n,th.n{text-align:right}
+td input,td select{min-width:92px}
+tfoot td{font-weight:600;border-top:2px solid var(--ink)}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px}
+.ok{background:var(--accbg);color:var(--acc)}.bad{background:var(--badbg);color:var(--bad)}.wr{background:var(--warnbg);color:var(--warn)}
+.res{font-size:16px;font-weight:600;padding:12px;border-radius:6px;margin-top:12px}
+.chk{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.chk input{width:auto;margin-top:5px}.chk small{color:var(--mute);display:block}
+@media print{nav,.bar,header p{display:none}section{display:block!important}}
+</style>
+</head>
+<body>
+<header>
+<h1>Tax Audit Toolkit</h1>
+<p>Working-paper calculators for a Section 44AB audit: reconciliation, depreciation, MSME interest, applicability and a Form 3CD checklist. Everything runs in your browser; nothing is uploaded.</p>
+</header>
+<nav role="tablist" id="tabs"></nav>
+<main>
+
+<section id="recon">
+<div class="card"><h2>Sales vs Form 26AS / AIS (TDS)</h2>
+<p class="hint">Paste from Excel (tab-separated) or comma-separated without thousand separators. First column is the key (TAN, PAN or party name; names are matched ignoring case and punctuation).</p>
+<div class="grid">
+<div><label>Books: key, sales (excl. GST)</label><textarea id="rb"></textarea></div>
+<div><label>26AS/AIS: key, gross amount credited, TDS deducted</label><textarea id="rt"></textarea></div>
+</div>
+<div class="bar"><div style="width:140px"><label>Tolerance (₹)</label><input id="rtol" type="number" value="1"></div>
+<button class="btn" id="rrun" style="align-self:end">Reconcile</button>
+<button class="btn alt" id="rsample" style="align-self:end">Load sample</button>
+<button class="btn alt" id="rcsv" style="align-self:end">Copy result as CSV</button></div></div>
+<div class="card tw" id="rout"></div>
+</section>
+
+<section id="dep">
+<div class="card"><h2>Depreciation under the Income-tax Act (WDV, block-wise)</h2>
+<p class="hint">Additions used for under 180 days get half rate. If a block's WDV goes negative after sales, it is deemed short-term capital gain (s.50) and depreciation is nil. Additional depreciation (s.32(1)(iia)) and the new-regime restrictions are not modelled; adjust the rate manually if needed.</p>
+<div class="tw"><table><thead><tr><th>Block</th><th>Rate %</th><th class="n">Opening WDV</th><th class="n">Additions ≥180 d</th><th class="n">Additions &lt;180 d</th><th class="n">Sale proceeds</th><th class="n">Depreciation</th><th class="n">Closing WDV</th><th>Note</th></tr></thead>
+<tbody id="dbody"></tbody><tfoot><tr><td colspan="6">Total</td><td class="n" id="dtd"></td><td class="n" id="dtc"></td><td></td></tr></tfoot></table></div>
+<div class="bar"><button class="btn alt" id="dadd">Add block</button></div></div>
+</section>
+
+<section id="msme">
+<div class="card"><h2>MSME payment delay: interest and s.43B(h)</h2>
+<p class="hint">Interest under s.16 MSMED Act: three times the bank rate, compounded monthly. Not deductible (Form 3CD clause 22). Under s.43B(h), sums owed to micro/small suppliers and unpaid by year end beyond the 15/45-day limit are disallowed for that year (clause 26).</p>
+<div class="grid">
+<div><label>Financial year end</label><input id="mfy" type="date" value="2026-03-31"></div>
+<div><label>Bank rate % (RBI MSF rate; verify current value)</label><input id="mbr" type="number" step="0.01" value="5.75"></div>
+<div><label>Interest rate applied (3×)</label><input id="mrate" disabled></div>
+</div>
+<div class="tw" style="margin-top:12px"><table><thead><tr><th>Supplier</th><th class="n">Amount</th><th>Acceptance date</th><th class="n">Agreed days (max 45)</th><th>Paid on (blank = unpaid)</th><th>Due date</th><th class="n">Days late</th><th class="n">Interest</th><th class="n">s.43B(h) disallowance</th></tr></thead>
+<tbody id="mbody"></tbody><tfoot><tr><td colspan="7">Total</td><td class="n" id="mti"></td><td class="n" id="mtd"></td></tr></tfoot></table></div>
+<div class="bar"><button class="btn alt" id="madd">Add invoice</button></div>
+<p class="hint">Assumption: whole 30-day months compound; the remainder accrues pro rata. Days late are counted up to the payment date, or the year end if unpaid.</p></div>
+</section>
+
+<section id="app">
+<div class="card"><h2>s.44AB applicability</h2>
+<div class="grid">
+<div><label>Assessee type</label><select id="at"><option value="b">Business</option><option value="p">Profession</option></select></div>
+<div><label>Turnover / gross receipts (₹)</label><input id="aturn" type="number"></div>
+<div><label>Cash receipts % of total</label><input id="acr" type="number" value="0"></div>
+<div><label>Cash payments % of total</label><input id="acp" type="number" value="0"></div>
+<div><label>Opted out of presumptive scheme (s.44AD) in the last 5 years and income above basic exemption?</label><select id="aop"><option value="n">No</option><option value="y">Yes</option></select></div>
+<div><label>Claims profit below 6%/8% presumptive rate (s.44AD(4))?</label><select id="alow"><option value="n">No</option><option value="y">Yes</option></select></div>
+</div>
+<div class="bar"><button class="btn" id="arun">Check</button></div><div id="aout"></div>
+<p class="hint">Thresholds: business ₹1 crore, or ₹10 crore if cash receipts and payments are each 5% or less; profession ₹50 lakh. Confirm the current due dates for the audit report and ITR on the Income Tax portal.</p></div>
+</section>
+
+<section id="chk">
+<div class="card"><h2>Form 3CD working checklist</h2><p class="hint">Ticks are saved in this browser only.</p><div id="cl"></div></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const N=v=>parseFloat(String(v).replace(/[₹,\s]/g,''))||0;
+const F=n=>n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const tabs=[['recon','Sales ↔ TDS'],['dep','Depreciation'],['msme','MSME interest'],['app','44AB applicability'],['chk','3CD checklist']];
+const nav=$('tabs');
+tabs.forEach(([id,t],i)=>{const b=document.createElement('button');b.textContent=t;b.setAttribute('role','tab');b.onclick=()=>show(id);b.dataset.id=id;nav.appendChild(b)});
+function show(id){tabs.forEach(([k])=>$(k).classList.toggle('on',k==id));[...nav.children].forEach(b=>b.setAttribute('aria-selected',b.dataset.id==id))}
+show('recon');
+
+/* ---- Recon ---- */
+const key=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
+const rows=t=>t.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>l.split(/\t|,|;/).map(x=>x.trim())).filter(r=>r[0]&&/\d/.test(r.slice(1).join('')));
+let rcsv='';
+function recon(){
+ const tol=N($('rtol').value),m={};
+ rows($('rb').value).forEach(r=>{const k=key(r[0]);m[k]=m[k]||{n:r[0],b:0,g:0,t:0,hb:0,hg:0};m[k].b+=N(r[1]);m[k].hb=1});
+ rows($('rt').value).forEach(r=>{const k=key(r[0]);m[k]=m[k]||{n:r[0],b:0,g:0,t:0,hb:0,hg:0};m[k].g+=N(r[1]);m[k].t+=N(r[2]);m[k].hg=1});
+ let h='<table><thead><tr><th>Party</th><th class="n">Books</th><th class="n">26AS gross</th><th class="n">Difference</th><th class="n">TDS</th><th class="n">TDS %</th><th>Status</th></tr></thead><tbody>',T=[0,0,0,0];
+ rcsv='Party,Books,26AS,Difference,TDS,Status\n';
+ Object.values(m).sort((a,b)=>Math.abs(b.b-b.g)-Math.abs(a.b-a.g)).forEach(x=>{
+  const d=x.b-x.g;let s,c;
+  if(!x.hg){s='In books only: no TDS reported';c='wr'}else if(!x.hb){s='In 26AS only: sales may be unrecorded';c='bad'}
+  else if(Math.abs(d)<=tol){s='Matched';c='ok'}else if(d>0){s='Books higher: timing, advance or no TDS';c='wr'}else{s='26AS higher: check unrecorded sales';c='bad'}
+  T[0]+=x.b;T[1]+=x.g;T[2]+=d;T[3]+=x.t;
+  h+=`<tr><td>${x.n.replace(/</g,'&lt;')}</td><td class="n">${F(x.b)}</td><td class="n">${F(x.g)}</td><td class="n">${F(d)}</td><td class="n">${F(x.t)}</td><td class="n">${x.g?F(x.t/x.g*100):'-'}</td><td><span class="tag ${c}">${s}</span></td></tr>`;
+  rcsv+=`"${x.n}",${x.b},${x.g},${d},${x.t},${s}\n`});
+ h+=`</tbody><tfoot><tr><td>Total</td><td class="n">${F(T[0])}</td><td class="n">${F(T[1])}</td><td class="n">${F(T[2])}</td><td class="n">${F(T[3])}</td><td></td><td></td></tr></tfoot></table>`;
+ $('rout').innerHTML=Object.keys(m).length?h:'<p class="hint">Paste both data sets and choose Reconcile.</p>';
+}
+$('rrun').onclick=recon;
+$('rsample').onclick=()=>{$('rb').value='AAACX1234A\t1500000\nBetaTech Pvt Ltd\t820000\nGamma Traders\t300000';$('rt').value='AAACX1234A\t1500000\t15000\nBetaTech Pvt Ltd\t860000\t8600\nDelta Corp\t250000\t2500';recon()};
+$('rcsv').onclick=()=>{try{navigator.clipboard.writeText(rcsv)}catch(e){}};
+
+/* ---- Depreciation ---- */
+const blocks=[['Building: residential',5],['Building: other',10],['Building: temporary',40],['Furniture & fittings',10],['Plant & machinery',15],['Computers & software',40],['Motor cars',15],['Intangible assets',25],['Pollution control equipment',40]];
+function addDep(i=4){const tr=document.createElement('tr');
+ tr.innerHTML=`<td><select>${blocks.map((b,j)=>`<option value="${j}" ${j==i?'selected':''}>${b[0]}</option>`).join('')}</select></td><td><input type="number" value="${blocks[i][1]}" style="min-width:60px"></td>`+[0,0,0,0].map(()=>'<td><input type="number" value="0"></td>').join('')+'<td class="n"></td><td class="n"></td><td></td>';
+ tr.querySelector('select').onchange=e=>{tr.querySelectorAll('input')[0].value=blocks[e.target.value][1];dep()};
+ $('dbody').appendChild(tr)}
+function dep(){let td=0,tc=0;
+ $('dbody').querySelectorAll('tr').forEach(tr=>{const i=[...tr.querySelectorAll('input')].map(x=>N(x.value));const[r,o,a1,a2,s]=i;
+  const W=o+a1+a2-s;let d=0,note='';
+  if(W<0){note='Negative WDV: deemed STCG u/s 50 of '+F(-W)}
+  else if(W==0&&(o+a1+a2)>0&&s>0){note='Block ceases; check s.50 gain/loss'}
+  else{const h=Math.min(a2,W);d=r/100*(W-h)+r/200*h}
+  const c=Math.max(W-d,0);td+=d;tc+=c;const c2=tr.querySelectorAll('td');c2[6].textContent=F(d);c2[7].textContent=F(c);c2[8].textContent=note});
+ $('dtd').textContent=F(td);$('dtc').textContent=F(tc)}
+$('dadd').onclick=()=>addDep(4);$('dbody').oninput=dep;
+addDep(4);addDep(5);addDep(6);dep();
+
+/* ---- MSME ---- */
+const D=s=>s?new Date(s+'T00:00:00Z'):null,day=864e5,fmtD=d=>d.toISOString().slice(0,10);
+function addM(){const tr=document.createElement('tr');
+ tr.innerHTML='<td><input value="Supplier"></td><td><input type="number" value="0"></td><td><input type="date"></td><td><input type="number" value="45" style="min-width:60px"></td><td><input type="date"></td><td></td><td class="n"></td><td class="n"></td><td class="n"></td>';
+ $('mbody').appendChild(tr)}
+function msme(){const fy=D($('mfy').value),r=3*N($('mbr').value)/100;$('mrate').value=(r*100).toFixed(2)+'% p.a.';let ti=0,td=0;
+ $('mbody').querySelectorAll('tr').forEach(tr=>{const v=[...tr.querySelectorAll('input')].map(x=>x.value),c=tr.querySelectorAll('td');
+  const P=N(v[1]),acc=D(v[2]),ag=Math.min(N(v[3])||45,45),paid=D(v[4]);
+  if(!acc||!fy||!P){c[5].textContent=c[6].textContent=c[7].textContent=c[8].textContent='';return}
+  const due=new Date(+acc+ag*day),end=paid||fy,late=Math.max(0,Math.round((end-due)/day));
+  const n=Math.floor(late/30),rem=late-30*n,i=P*(Math.pow(1+r/12,n)*(1+r/12*rem/30)-1);
+  const dis=(due<=fy&&(!paid||paid>fy))?P:0;
+  ti+=i;td+=dis;c[5].textContent=fmtD(due);c[6].textContent=late;c[7].textContent=F(i);c[8].textContent=dis?F(dis):'-'});
+ $('mti').textContent=F(ti);$('mtd').textContent=F(td)}
+$('madd').onclick=addM;$('mbody').oninput=msme;$('mfy').oninput=$('mbr').oninput=msme;
+addM();msme();
+
+/* ---- 44AB ---- */
+$('arun').onclick=()=>{const p=$('at').value=='p',t=N($('aturn').value),cr=N($('acr').value),cp=N($('acp').value);const L=[];
+ if(p){if(t>5e6)L.push('Professional gross receipts exceed ₹50 lakh.')}
+ else{const lim=(cr<=5&&cp<=5)?1e8:1e7;if(t>lim)L.push(`Business turnover exceeds ₹${lim/1e7} crore.`)}
+ if($('aop').value=='y')L.push('s.44AB(e): opted out of s.44AD within five years and income exceeds the basic exemption limit.');
+ if($('alow').value=='y')L.push('s.44AB(e)/(d): profit declared below the presumptive rate with income above the exemption limit.');
+ $('aout').innerHTML=L.length?`<div class="res bad">Tax audit applies.<br><small>${L.join('<br>')}</small></div>`:'<div class="res ok">No tax audit trigger found from these inputs. Check other provisions (s.44ADA, s.44AE, s.44BB etc.).</div>'};
+
+/* ---- Checklist ---- */
+const items=[['Clause 8/9','Registration of the firm/company, PAN, GST and tax regime (115BAA/BAC/old)'],['Clause 13','Method of accounting and changes (ICDS adjustments)'],['Clause 18','Fixed asset block-wise depreciation and addition dates (use the depreciation tab)'],['Clause 20','Bonus/commission to employees, s.36(1)(ii), (va): PF/ESI paid by due date'],['Clause 21','Expenses of capital nature, personal, penalties, illegal; s.37'],['Clause 22','MSME interest inadmissible u/s 23 of MSMED Act'],['Clause 26','s.43B items paid by due date, including 43B(h) MSME dues'],['Clause 27','CENVAT/GST credit treatment and ICDS impact'],['Clause 29A/B','Section 56(2)(x) and 50CA, share valuation, advances forfeited'],['Clause 31','Loans and deposits taken or repaid in cash: s.269SS, 269T, 269V'],['Clause 34','TDS/TCS compliance: deduction, deposit, returns, interest u/s 201(1A)'],['Clause 35/36','Quantitative details and dividend/ s.115O'],['Clause 21(a)(ii)/ 40A(3)','Cash payments above ₹10,000 per day per person (₹35,000 for transport)'],['Clause 40','Accounting ratios: gross profit, net profit and stock-in-trade to turnover'],['Clause 41','Demand/refund under any tax law'],['Clause 44','Break-up of total GST expenditure by registered/unregistered vendors'],['GST','Reconcile turnover in books with GSTR-1, 3B and 9 (supports clause 44 and turnover reporting)'],['Related party','s.40A(2) payments to specified persons, Form 3CEB if transfer pricing applies']];
+let st={};try{st=JSON.parse(localStorage.getItem('tax-chk')||'{}')}catch(e){}
+$('cl').innerHTML=items.map((x,i)=>`<label class="chk"><input type="checkbox" data-i="${i}" ${st[i]?'checked':''}><span><b>${x[0]}</b><small>${x[1]}</small></span></label>`).join('');
+$('cl').onchange=e=>{st[e.target.dataset.i]=e.target.checked;try{localStorage.setItem('tax-chk',JSON.stringify(st))}catch(x){}};
+</script>
+</body>
+</html>

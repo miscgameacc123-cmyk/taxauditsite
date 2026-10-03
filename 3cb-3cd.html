@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Form 3CB-3CD builder</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Fraunces:wght@600&display=swap">
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1c2230;--mute:#667085;--line:#d8dce3;--acc:#1b6b58;--bad:#b3402a;--wrbg:#fdf3d9;--wr:#7a5500}
+@media (prefers-color-scheme:dark){:root{--bg:#12161d;--card:#1b212b;--ink:#e8ebf0;--mute:#98a2b3;--line:#323a47;--acc:#59c3a5;--bad:#f09a86;--wrbg:#3a2f12;--wr:#e8c365}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:1200px;margin:auto;padding:20px}h1{font:600 24px Fraunces,Georgia,serif;margin:0 0 4px}.mute{color:var(--mute);font-size:13px;margin:0 0 10px}
+details{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:12px}summary{padding:12px 16px;font-weight:600;cursor:pointer}details>div{padding:0 16px 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}label{display:block;font-size:12.5px;color:var(--mute);margin-bottom:2px}
+input,select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink);font:inherit}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn{background:var(--acc);color:var(--bg);border:0;border-radius:5px;padding:8px 14px;font:500 14px "IBM Plex Sans",sans-serif;cursor:pointer;margin:0 8px 8px 0}.btn.alt{background:none;color:var(--acc);border:1px solid var(--acc)}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--mute);font-weight:500}td input,td select{min-width:110px}
+.bar{position:sticky;top:0;background:var(--bg);padding:10px 0;z-index:5;border-bottom:1px solid var(--line);margin-bottom:12px}
+#v{background:var(--wrbg);color:var(--wr);border-radius:6px;padding:8px 12px;font-size:13px;margin-bottom:12px}#v:empty{display:none}
+</style></head><body><main>
+<h1>Form 3CB-3CD builder</h1>
+<p class="mute">Import your trial balance and fixed asset register, review what the tool fills into the clauses, then download JSON in the utility format (schema Ver2.5). You can also import an existing 3CB-3CD JSON to edit. Data stays in your browser.</p>
+<div class="bar"><button class="btn" id="gen">Download JSON</button><button class="btn alt" id="chk">Validate</button><label style="display:inline-block;margin:0"><span class="btn alt" style="display:inline-block">Import JSON</span><input type="file" id="imp" accept=".json" hidden></label><button class="btn alt" id="clr">Clear all</button></div>
+<div id="v"></div><details open><summary>Import financial data and auto-fill clauses</summary><div>
+<p class="mute">Upload Excel or CSV files. The tool classifies the data, fills the clauses below and lists what it filled. The classification is a proposal, so review every figure. Enter the previous-year dates under Form 3CB first.</p>
+<div class="grid"><div><label>1. Trial balance (account, debit, credit or one balance column)</label><input type="file" id="tbf" accept=".xlsx,.xls,.csv"></div>
+<div><label>Write clause 40 ratios to</label><select id="rblk"><option value="PrevYrProfTurnOvr">Block 1 (PrevYrProfTurnOvr)</option><option value="PrecPrevYrProfTurnOvr">Block 2 (PrecPrevYrProfTurnOvr)</option></select></div>
+<div><label>2. Fixed asset register (block, rate, opening WDV, cost, put-to-use date, sale value)</label><input type="file" id="faf" accept=".xlsx,.xls,.csv"><span class="mute" id="fainfo"></span></div></div>
+<div id="tbrev"></div><button class="btn" id="tbapply">Apply trial balance to clauses 21 and 40</button><button class="btn" id="faapply">Apply register to clause 18</button>
+<p class="mute">The other tables (loans, TDS, partners, books and so on) each have an "Import rows from Excel" button in their own section. Column headings are matched to the column names shown.</p><div id="log"></div></div></details>
+<div id="form"></div>
+<script>
+const $=id=>document.getElementById(id);
+const gp=(o,p)=>p.split('.').reduce((a,k)=>a==null?undefined:a[k],o);
+function sp(o,p,v){const k=p.split('.');k.forEach((x,i)=>{if(i==k.length-1)o[x]=v;else{if(o[x]==null||typeof o[x]!='object')o[x]=/^\d+$/.test(k[i+1])?[]:{};o=o[x]}})}
+const YN=['Y','N'],Y=['y','Y/N'];
+const flagKeys='ChngMethodOfAcc ChngShareSec79 ChangeInPartner ChangeNaturBuisnes BookOfAcnt PrftLoassAcnt Sec145 Sec145A Sec40A3 Sec40A3A SalesTax VATPY Section69D SectionDed ChapXVIIFlag TaxPrescTime Sec201_1A_206_C7 IncomeCluaseixofsubsection2 IncomeCluasexofsubsection2 TransferPriceSection92CE IncurredExpenditure ImpermissibleSec96 Section36BFlag SubClauseeofClause22 FurnishStatement SubSec2Sec286'.split(' ');
+const addr=p=>['AddrDetail1:Address line 1','AddrDetail2:Address line 2','CityOrTownOrDistrict:City/district code','LocalityOrArea:Locality code','LocalityOrAreaName:Locality name','PostOffice:Post office code','PostOfficeName:Post office name','StateCode:State code','CountryCode:Country code','PinCode:PIN'].map(x=>{const[a,b]=x.split(':');return[p+a,b,'t']});
+const rat=(p,m)=>[['TotalTurnover','Total turnover'],['GrosProfNumertr','Gross profit'],['NetProfNumertr','Net profit'],['StockTradeNmrtr','Stock-in-trade'],...(m?[['MaterialconsumedFinishedgoods','Material consumed / finished goods']]:[])].map(([k,l])=>['Form3cdAccountingRatioCalculations.'+p+'.'+k,l,'n']);
+const FIELDS=[
+['Report and software',[['CreationInfo.SWVersionNo','Software version','t'],['CreationInfo.SWCreatedBy','Software ID (SWCreatedBy)','t'],['CreationInfo.JSONCreatedBy','JSON created by','t'],['CreationInfo.JSONCreationDate','JSON creation date','d'],['CreationInfo.IntermediaryCity','Intermediary city','t'],['assignFlag','assignFlag','t'],['type','Tax regime (e.g. 115BAC)','t']]],
+['Form 3CB: assessee and period',[['Declaration.Point1.I_We','I / We','s',['We','I']],['Declaration.Point1.DateofsigningTaxAuditReport','Date of signing report','d'],['Declaration.Point1.Year','Assessment year (e.g. 2026)','n'],['Declaration.Point1.TypeOfAccount','Type of account','t'],['Declaration.Point1.StartDate','Previous year start','d'],['Declaration.Point1.EndDate','Previous year end','d'],['Declaration.Point1.AssesseeName.FirstName','First name','t'],['Declaration.Point1.AssesseeName.MiddleName','Middle name','t'],['Declaration.Point1.AssesseeName.LastName','Last / full name','t'],['Declaration.Point1.PAN','PAN','t'],...addr('Declaration.Point1.AddressDetail.'),['Declaration.Point2.HeadOfficeLocation','Head office location','t'],['Declaration.Point2.NumberOfBrances','Number of branches','n'],['Declaration.Point3.PointB_C.PointSecond.PLSD','Profit or loss','s',['Profit','Loss']],['Declaration.Point3.PointA.OCDI_Description','Qualification on MSME records (leave blank if none)','t']]],
+['Form 3CD Part A (clauses 1 to 8)',[['PartA.Status','Status code (3 = firm in your sample)','n'],['PartA.AssessmentYear','Assessment year (2026-27)','t'],['@gstin','GSTIN','t'],['@gstate','GST state code','t']]],
+['Auditor (signing details)',[['OtherInformation1.FirstName','First name','t'],['OtherInformation1.MiddleName','Middle name','t'],['OtherInformation1.LastName','Last name','t'],...addr('OtherInformation1.'),['OtherInformation1.Place','Place','t'],['OtherInformation1.Date','Date','d'],['OtherInformation1.MembershipNo','Membership no.','t'],['OtherInformation1.FirmRegNum','Firm registration no.','t'],['OtherInformation1.IpAddress','IpAddress (as in sample)','t']]],
+['Books of account address',[['@b1','Address line 1','t'],['@b2','Address line 2','t'],['@bcity','City','t'],['@bstate','State code','t'],['@bpin','PIN','t']]],
+['Clause 12/13 and ICDS',[['Form3cdChngMethAccDtl.Detail','Method of accounting detail code','t'],['Form3cdChngMethAccDtl.AccType','Account type','t'],['MethodValCS.ChangeType','Stock valuation change code','t']]],
+['Clause 27 (ITC / CENVAT treatment)',['OpeningBal','CenvatAvail','CenvatUtilized','Balance'].flatMap(k=>[['Form3cdPl.0.'+k+'Amount',k+' amount','n'],['Form3cdPl.0.'+k+'TreatmentPl',k+' treatment in P&L','t']])],
+['Clause 21 and 40A amounts',[['Form3cdAmtInadm40ASubClauseiC.0','40A(i)(c)','n'],['Form3cdAmtInadm40ASubClauseiia.0','40A(ia)','n'],['Form3cdAmtInadm40ASubClauseiib.0','40A(ib)','n'],['Form3cdAmtInadm40ASubClauseiv.0','40A(iv)','n'],['Form3cdAmtInadm40ASubClausev.0','40A(v)','n']]],
+['Clause 40: accounting ratios (block 1 = PrevYrProfTurnOvr)',rat('PrevYrProfTurnOvr',0)],
+['Clause 40: accounting ratios (block 2 = PrecPrevYrProfTurnOvr)',rat('PrecPrevYrProfTurnOvr',1)],
+['Other audits and special flags',[['CostAudit.CostAuditFlag','Cost audit','y'],['AuditExcise.AuditExciseFlag','Excise audit','y'],['AuditSec72.AuditSec72Flag','Section 72 audit','y'],['Form3cdSpecloss73.Form3cdSpec73Flag','s.73 speculation loss','y'],['Form3cdSpec73A.Form3cdSpec73AFlag','s.73A','y'],['Form3cdSpecdeemdBus73.Form3cdSpecdeemdBusFlag','Deemed speculative business','y']]],
+['Clause flags (Form3cdFlags)',flagKeys.map(k=>['Form3cdFlags.'+k,k,'y'])]];
+const T=(p,l,cols,o={})=>({p,l,cols,...o});
+const c=(k,l,t='t')=>[k,l,t];
+const TABLES=[
+T('PartA.Clause','Clause 8: section 44AB clause (e.g. 44ABa)',[c('ClauseNo','Clause no.')]),
+T('Declaration.Point5.Observations','3CB observations / qualifications',[c('ObservationsCode','Code'),c('ObservationsVal','Observation')]),
+T('Form3cdFirmAopDetailNew.Form3cdFirmAopDetailPK','Clause 9: partners / members',[c('ChangeType','Type'),c('FirmAopDesc','Name'),c('FirmAopPerc','Share %','n')],{d:{ChangeType:'CURR_PROF_SHARE'}}),
+T('F3cdFirmAopDtlNatOfBusiness.Form3cdFirmAopDetailPK','Clause 10: nature of business',[c('ChangeType','Type'),c('Sector','Sector code'),c('FirmAopDesc','Business code')],{d:{ChangeType:'CURR_NATURE_BUSNS'}}),
+T('Form3cdBooksOfAccLst','Clause 11: books of account',[c('BooksOfAccType','Type'),c('BooksDetail','Book')],{wrap:'Form3cdBooksOfAccLstPK',pk:['BooksOfAccType','BooksDetail'],d:{BooksOfAccType:'LBEX'}}),
+T('Form3cdDisclVal','Clause 13: ICDS disclosures',[c('Icds','ICDS (e.g. ICDSI)'),c('Disclosure','Disclosure')],{wrap:'Form3cdDisclValPK',pk:['Icds','Disclosure'],arr:1,k:{AccType:'DEVIATION_VALUE'}}),
+T('Form3cdAmtNotCredit','Clause 16: amounts not credited to P&L',[c('TableType','Item'),c('TypeOfAmt','Amount','n'),c('Description','Description')],{wrap:'Form3cdAmtNotCreditPk',pk:['TableType','TypeOfAmt','Description'],init:['ITEMS_SEC28','ESCL_CLMS_PY','ANY_OTH_INCM','CAP_RECEIPT'].map(x=>({TableType:x,TypeOfAmt:0,Description:'Nil'}))}),
+T('Form3cdDeprAllw','Clause 18: depreciation (WDV). Allowable depreciation and closing WDV are calculated',[c('DescBlockAssets','Block code'),c('RateOfDep','Rate %','n'),c('OpeningWDV','Opening WDV','n'),c('Puttousefor180daysormore','Additions, used 180+ days','n'),c('Puttouseforlessthan180days','Additions, used <180 days','n'),c('TotalDeduction','Sales / deductions','n')],{post:r=>{const o=+r.OpeningWDV||0,m=+r.Puttousefor180daysormore||0,l=+r.Puttouseforlessthan180days||0,s=+r.TotalDeduction||0,W=o+m+l-s,h=Math.min(l,Math.max(W,0)),rt=+r.RateOfDep||0,d=W>0?Math.round(rt/100*(W-h)+rt/200*h):0;return{...r,methodOfDepreciation:'WDV',adjustment:0,adjustmentwrittendown:o,Lessthan180:0,morethan180:0,OtherAdjustmentsifAny:0,Intangibledjustmentwrittendown:0,TotalModvat:0,TotalChangeExchangeRate:0,TotalSubsidyGrant:0,TotalPurchase:m+l,TotalPurchaseValue:m+l,DepAllowable:d,WrittenDownVal:Math.max(W-d,0)}}}),
+T('Form3cdEmpBonusComm','Clause 20: bonus / commission to employees',[c('DetailsUs36','Details'),c('Amount','Amount','n')],{init:[{DetailsUs36:'Nil',Amount:0}]}),
+T('Form3cdDebPLExpnditure','Clause 21: expenditure debited to P&L',[c('ParticularType','Type'),c('Particulars','Particulars'),c('Amount','Amount','n')],{init:'CAPITAL PERSONAL ADVERTISMNT CLUBFEE CLUBSERVICE PENALTY OTHERPENALTY UNDERLAW OFFENCE SETTLE'.split(' ').map(x=>({ParticularType:x,Particulars:'Nil',Amount:0}))}),
+T('Form3cdExpOth','Clause 21: other expenditure',[c('ExpenditureType','Type'),c('Amount','Amount','n'),c('Details','Details')],{wrap:'Form3cdExpOthPK',pk:['ExpenditureType','Amount','Details'],init:'GRATSEC40A7 SUMSEC409 CONTGNTNAT DEDUCSEC14A AMTINADMSEC36I'.split(' ').map(x=>({ExpenditureType:x,Amount:0}))}),
+T('Form3cdInadm','Clause 22: MSME interest (s.23 MSMED Act)',[c('ParticularType','Type'),c('Particulars','Particulars'),c('Amount1','Amount 1','n'),c('Amount2','Amount 2','n'),c('Amount3','Amount 3','n'),c('Amount4','Amount 4','n')],{init:[{ParticularType:'SEC23',Particulars:'NA',Amount1:0,Amount2:0,Amount3:0,Amount4:0}]}),
+T('Form3cdAmtSec269ssDetail','Clause 31(a): loans and deposits taken (s.269SS)',[c('PanNoLender','Lender PAN'),c('LenderName','Name'),c('LenderAddress','Address'),c('AmtLoanDeposit','Amount','n'),c('LoanDepChqDrftFlag','Cheque/draft?','y'),c('NatureAmtCdeType','Mode (C, RTGS...)'),c('LoanDepSqrdPyFlag','Squared up?','y'),c('MaxAmtOsAccPy','Max outstanding','n'),c('LoanDepChqDrftType','Cheque type (e.g. APC)')]),
+T('Form3cdAmtSec269tDetail','Clause 31(b): repayments (s.269T)',[c('PayeePanNo','Payee PAN'),c('PayeeName','Name'),c('PayeeAddress','Address'),c('AmtRepayment','Amount','n'),c('MaxAmtOsAccPy','Max outstanding','n'),c('RepaymentChqDraftFlag','Cheque/draft?','y'),c('NatureAmtCdeCType','Mode'),c('RepaymentChqDraftType','Cheque type')]),
+T('Form3cdChapXVII','Clause 34(a): TDS / TCS',[c('TAN','TAN'),c('Sec','Section'),c('NatureOfPaymnt','Nature of payment'),c('AmtOfNatureSpec','Amount of payment','n'),c('TotTaxDedCollectd','Amount on which tax deducted','n'),c('TotTaxSpecRate','Deducted at specified rate','n'),c('AmtTaxSpecRate','Tax at specified rate','n'),c('TotLessThanSpecRate','Deducted below rate','n'),c('AmtTaxDedOrCollect','Tax not deducted','n'),c('AmtNotDepToGovt','Not deposited','n')]),
+T('Form3cdTaxDedCollect','Clause 34(b): TDS / TCS statements',[c('TAN','TAN'),c('TypeOfForm','Form (26Q...)'),c('DueDateOfFurnish','Due date','d'),c('DateOfFurnish','Date furnished','d'),c('TransactionsFlag','Transactions?','y')]),
+T('Form3cdTradeRawProdDet','Clause 35: quantitative details',[c('ConcernType','Type (TRADE...)'),c('ItemName','Item'),c('Unit','Unit code'),c('OpeningStock','Opening','n'),c('PurchasePy','Purchases','n'),c('SalesDurPy','Sales','n'),c('ClosingStock','Closing','n'),c('ShortageExcess','Shortage / excess','n')],{wrap:'Form3cdTradeRawProdDetPK',pk:['ConcernType']})];
+const BASE=()=>({Form_Details:{FormName:'FORM3CB',Description:'Audit report under Section 44AB of the Income-tax Act, 1961 in the case of a person referred to in clause (b) of sub-rule (1) of rule 6G',SchemaVer:'Ver2.5',FormVer:'1.0'},Form3cdChapXVIIInfo:{CsvDtls:{Attachment:{mimetype:'text/csv',hash:'12345'},HasMoreThan500:'false'}},Form3cdTaxDedCollectInfo:{CsvDtls:{Attachment:{mimetype:'text/csv',hash:'12345'},HasMoreThan500:'false'}}});
+let ST;const save=()=>{try{localStorage.setItem('f3cb',JSON.stringify(ST))}catch(e){}};
+function fresh(){ST={f:{'CreationInfo.JSONCreationDate':new Date().toISOString().slice(0,10),'assignFlag':'Y','Declaration.Point1.I_We':'We','Declaration.Point1.TypeOfAccount':'Profit and loss account','Declaration.Point1.CountryCode':'91','OtherInformation1.CountryCode':'91','Declaration.Point3.PointB_C.PointSecond.PLSD':'Profit','Form3cdPl.0.OpeningBalAmount':0},t:{},extra:null};TABLES.forEach(t=>ST.t[t.p]=JSON.parse(JSON.stringify(t.init||[])))}
+try{ST=JSON.parse(localStorage.getItem('f3cb'))}catch(e){}if(!ST||!ST.f)fresh();
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const inp=(t,v,a,o)=>t=='s'?`<select ${a}>${o.map(x=>`<option ${x==v?'selected':''}>${x}</option>`).join('')}</select>`:t=='y'?`<select ${a}><option value=""></option>${YN.map(x=>`<option ${x==v?'selected':''}>${x}</option>`).join('')}</select>`:`<input ${a} type="${t=='n'?'number':t=='d'?'date':'text'}" value="${esc(v)}">`;
+function draw(){let h='';
+ FIELDS.forEach(([g,fs],i)=>{h+=`<details ${i<2?'open':''}><summary>${g}</summary><div><div class="grid">${fs.map(([p,l,t,o])=>`<div><label>${l}</label>${inp(t,ST.f[p],`data-f="${p}"`,o)}</div>`).join('')}</div></div></details>`});
+ TABLES.forEach((t,i)=>{h+=`<details><summary>${t.l}</summary><div class="tw"><table><thead><tr>${t.cols.map(x=>`<th>${x[1]}</th>`).join('')}<th></th></tr></thead><tbody>${ST.t[t.p].map((r,j)=>`<tr>${t.cols.map(x=>`<td>${inp(x[2],r[x[0]],`data-t="${i}" data-r="${j}" data-k="${x[0]}"`)}</td>`).join('')}<td><button class="btn alt" data-del="${i}.${j}" style="margin:0">Remove</button></td></tr>`).join('')}</tbody></table><button class="btn alt" data-add="${i}" style="margin-top:8px">Add row</button><label style="display:inline-block;margin:8px 0 0"><span class="btn alt" style="display:inline-block">Import rows from Excel</span><input type="file" data-imp="${i}" accept=".xlsx,.xls,.csv" hidden></label></div></details>`});
+ $('form').innerHTML=h}
+$('form').addEventListener('input',e=>{const d=e.target.dataset;let v=e.target.value;if(d.f){const f=FIELDS.flatMap(x=>x[1]).find(x=>x[0]==d.f);ST.f[d.f]=f[2]=='n'&&v!==''?+v:v}else if(d.t!=null){const t=TABLES[d.t],col=t.cols.find(x=>x[0]==d.k);ST.t[t.p][d.r][d.k]=col[2]=='n'&&v!==''?+v:v}save()});
+$('form').addEventListener('click',e=>{const d=e.target.dataset;if(d.add!=null){const t=TABLES[d.add];ST.t[t.p].push({...(t.d||{})});save();draw()}if(d.del){const[i,j]=d.del.split('.');ST.t[TABLES[i].p].splice(j,1);save();draw()}});
+const clean=r=>Object.fromEntries(Object.entries(r).filter(([k,v])=>v!==''&&v!=null));
+const r2=x=>Math.round(x*100)/100;
+function build(){const F=ST.extra?JSON.parse(JSON.stringify(ST.extra)):BASE();const v=p=>ST.f[p];
+ FIELDS.flatMap(x=>x[1]).forEach(([p,l,t])=>{if(p[0]=='@')return;const x=ST.f[p];if(x===undefined||x==='')return sp(F,p,t=='n'?0:t=='y'?undefined:'');sp(F,p,x)});
+ const yr=String(v('Declaration.Point1.Year')||'');F.Form_Details.AssessmentYear=yr;
+ const iw=v('Declaration.Point1.I_We')||'We',mo=iw=='We'?'Our':'My',mu=iw=='We'?'Us':'Me',D=F.Declaration;
+ D.Point1.I_We=iw;D.Point2.I_We=iw;D.Point2.TypeOfAccount=D.Point1.TypeOfAccount;
+ if(D.Point3.PointA&&!D.Point3.PointA.OCDI_Description)delete D.Point3.PointA;else D.Point3.PointA.I_We=iw;
+ D.Point3.PointB_A={I_We:iw,My_Our:mo};D.Point3.PointB_B={My_Our1:mo,My_Our2:mo};
+ D.Point3.PointB_C={My_Our1:mo,My_Our2:mo,Me_Us:mu,PointFirst:yr,PointSecond:{typeOfAccount:D.Point1.TypeOfAccount,PLSD:v('Declaration.Point3.PointB_C.PointSecond.PLSD')||'Profit'}};
+ D.Point5={My_Our1:mo,My_Our2:mo,Me_Us:mu,Observations:ST.t['Declaration.Point5.Observations'].map(clean)};
+ const A=F.PartA,P1=D.Point1;A.AssesseeName=clean(P1.AssesseeName);A.AddressDetail=clean(P1.AddressDetail);A.PAN=P1.PAN;A.PartAStartDate=P1.StartDate;A.PartAEndDate=P1.EndDate;
+ A.IndirectTaxFlag=v('@gstin')?'Y':'N';if(v('@gstin'))A.Form3cdIndirectTax=[{IndirectTaxType:'GST',StateCode:v('@gstate')||'',RegNo:v('@gstin')}];
+ TABLES.forEach(t=>{if(t.p=='Declaration.Point5.Observations')return;let rows=ST.t[t.p].map(r=>t.post?t.post(r):r).map(r=>{r=clean(r);if(!t.wrap)return r;const pk={},rest={};Object.entries(r).forEach(([k,x])=>(t.pk.includes(k)?pk:rest)[k]=x);Object.assign(pk,t.k||{});Object.keys(t.k||{}).forEach(k=>delete rest[k]);return{[t.wrap]:t.arr?[pk]:pk,...rest}});
+  if(t.p=='PartA.Clause'||rows.length||t.init)sp(F,t.p,rows)});
+ const adr=clean({AddrDetail1:v('@b1'),AddrDetail2:v('@b2'),CityOrTownOrDistrict:v('@bcity'),StateCode:v('@bstate'),CountryCode:'91',PinCode:v('@bpin')});
+ F.Form3cdBooksOfAccLstAddress=ST.t.Form3cdBooksOfAccLst.map(b=>({Form3cdBooksOfAccLstPK:{BooksOfAccType:'BOAM',BooksDetail:b.BooksDetail,AddressDetail:adr}}));
+ ['iC','iia','iib','iv','v'].forEach(s=>{const k='Form3cdAmtInadm40ASubClause'+s;F[k]=[+(v(k+'.0')||0)]});
+ const ar=F.Form3cdAccountingRatioCalculations;[['PrevYrProfTurnOvr',0],['PrecPrevYrProfTurnOvr',1]].forEach(([k,m])=>{const o=ar[k]||{},t=+o.TotalTurnover||0,q=(a,b)=>t?r2(a/b*100):0;
+  Object.assign(o,{GrossprofitTurnover:q(o.GrosProfNumertr,t),NetprofitTurnover1:q(o.NetProfNumertr,t),StockInTrade:q(o.StockTradeNmrtr,t),GrosProfDmntr:t,NetProfDmntr:t,StockTradeDmntr:t});if(m)o.MaterialDmntr=+o.MaterialconsumedFinishedgoods?t:0;ar[k]=o});
+ return{metadata:{filingType:'O',refYearType:'AY',financialQtr:0,refYear:+yr||0,formName:'F3CB-3CD'},data:{FORM3CB:{F3CB:F}}}}
+function validate(){const e=[],f=ST.f,g=p=>String(f[p]??'').trim();
+ if(!/^[A-Z]{5}\d{4}[A-Z]$/.test(g('Declaration.Point1.PAN')))e.push('Assessee PAN looks invalid');
+ if(!g('Declaration.Point1.AssesseeName.LastName'))e.push('Assessee name is required');
+ ['Declaration.Point1.StartDate','Declaration.Point1.EndDate','Declaration.Point1.DateofsigningTaxAuditReport'].forEach(p=>{if(!g(p))e.push('Missing date: '+p.split('.').pop())});
+ if(g('Declaration.Point1.StartDate')&&g('Declaration.Point1.EndDate')<=g('Declaration.Point1.StartDate'))e.push('Period end must be after start');
+ if(!/^\d{4}-\d{2}$/.test(g('PartA.AssessmentYear')))e.push('Part A assessment year should look like 2026-27');
+ if(!/^\d{6}$/.test(g('OtherInformation1.MembershipNo')))e.push('Membership number should be 6 digits');
+ if(!g('OtherInformation1.FirmRegNum'))e.push('Firm registration number is required');
+ if(g('@gstin')&&!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(g('@gstin')))e.push('GSTIN format looks wrong');
+ ST.t.Form3cdChapXVII.forEach((r,i)=>{if(r.TAN&&!/^[A-Z]{4}\d{5}[A-Z]$/.test(r.TAN))e.push('Clause 34(a) row '+(i+1)+': TAN format');});
+ [['Form3cdAmtSec269ssDetail','PanNoLender'],['Form3cdAmtSec269tDetail','PayeePanNo']].forEach(([t,k])=>ST.t[t].forEach((r,i)=>{if(r[k]&&!/^[A-Z]{5}\d{4}[A-Z]$/.test(r[k]))e.push(t+' row '+(i+1)+': PAN format')}));
+ if(ST.t['Form3cdFirmAopDetailNew.Form3cdFirmAopDetailPK'].length){const s=ST.t['Form3cdFirmAopDetailNew.Form3cdFirmAopDetailPK'].reduce((a,r)=>a+(+r.FirmAopPerc||0),0);if(Math.abs(s-100)>.01)e.push('Partner shares add up to '+s+'%, not 100%')}
+ $('v').innerHTML=e.length?'<b>Check before filing:</b><br>'+e.join('<br>'):'';return e}
+$('chk').onclick=()=>{if(!validate().length)$('v').textContent='No issues found by the built-in checks. Still import the file into the offline utility to confirm.';$('v').style.display='block'};
+$('gen').onclick=()=>{validate();const o=build(),pan=o.data.FORM3CB.F3CB.Declaration.Point1.PAN||'PAN',b=new Blob([JSON.stringify(o,null,1)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`3CB_${pan}_${o.metadata.refYear}.json`;a.click()};
+$('imp').onchange=async e=>{try{const o=JSON.parse((await e.target.files[0].text()).replace(/^\uFEFF/,'')),F=o.data.FORM3CB.F3CB;fresh();
+ FIELDS.flatMap(x=>x[1]).forEach(([p])=>{const x=gp(F,p);if(x!==undefined)ST.f[p]=x});
+ const g=F.PartA.Form3cdIndirectTax?.[0];if(g){ST.f['@gstin']=g.RegNo;ST.f['@gstate']=g.StateCode}
+ const a=F.Form3cdBooksOfAccLstAddress?.[0]?.Form3cdBooksOfAccLstPK?.AddressDetail||{};Object.entries({'@b1':'AddrDetail1','@b2':'AddrDetail2','@bcity':'CityOrTownOrDistrict','@bstate':'StateCode','@bpin':'PinCode'}).forEach(([k,x])=>ST.f[k]=a[x]);
+ TABLES.forEach(t=>{const arr=gp(F,t.p);if(!Array.isArray(arr))return;ST.t[t.p]=arr.map(r=>{if(!t.wrap)return{...r};const w=r[t.wrap];return{...(Array.isArray(w)?w[0]:w),...Object.fromEntries(Object.entries(r).filter(([k])=>k!=t.wrap))}})});
+ const ar=F.Form3cdAccountingRatioCalculations;ST.extra=null;save();draw();$('v').textContent='Imported. Review the fields, then download.'}catch(x){$('v').textContent='Could not read that file as a 3CB-3CD JSON.'}};
+$('clr').onclick=()=>{if(confirm('Delete all entries?')){fresh();save();draw();$('v').innerHTML=''}};
+const NN=v=>parseFloat(String(v??'').replace(/[₹,\s]/g,''))||0,sg=v=>/cr\s*$/i.test(String(v))?-NN(v):NN(v);
+async function sheet(f){const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}),r=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''}).filter(x=>x.some(c=>String(c).trim()!==''));return{h:(r[0]||[]).map(x=>String(x).trim()),r:r.slice(1)}}
+const ci=(h,re)=>h.findIndex(x=>re.test(x));
+function iso(v){if(v instanceof Date)return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;if(typeof v=='number'&&v>20000)return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,10);let m=String(v).match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;m=String(v).match(/^\d{4}-\d{2}-\d{2}/);return m?m[0]:''}
+const CATS=['Ignore (balance sheet / other)','Sales / turnover','Other income','Purchases','Opening stock','Closing stock','Direct expenses','Indirect expenses','Penalty / fine (cl.21)','Personal expenses (cl.21)','Club fees (cl.21)','Capital expenditure (cl.21)'];
+const RULES=[[/penalt|fine\b|late fee|damages/i,8],[/depreciation|interest (paid|on loan)|expense|salary|salaries|rent paid|telephone|printing|stationery|travel|insurance|repair|audit fee|bank charges|electricity|conveyance|staff|postage|professional charges|office/i,7],[/gst|tds|tcs|input|output|capital a|reserve|loan|creditor|debtor|bank|cash|provision|drawing|payable|receivable|advance|deposit|investment/i,0],[/personal/i,9],[/club/i,10],[/capital exp/i,11],[/opening stock/i,4],[/closing stock/i,5],[/purchase/i,3],[/sale|turnover|revenue from op|professional fee|service income|job work income/i,1],[/interest (received|income)|discount received|other income|rent received|dividend|commission received/i,2],[/freight inward|carriage inward|wages|factory|power and fuel|job work charges|direct exp|manufactur/i,6]];
+let TB=[],FA=null,LOG=[];const log=m=>LOG.push(m);
+const showLog=()=>{$('log').innerHTML=LOG.length?'<b>What was filled and what to review</b><ul>'+LOG.map(x=>`<li>${esc(x)}</li>`).join('')+'</ul>':''};
+$('tbf').onchange=async e=>{const{h,r}=await sheet(e.target.files[0]),a=ci(h,/account|ledger|particular|head|name/i),d=ci(h,/debit|^dr/i),c=ci(h,/credit|^cr/i),b=ci(h,/balance|closing|amount/i),g=ci(h,/group|type|nature/i);
+ TB=r.map(x=>{const n=String(x[a>=0?a:0]??'').trim(),net=(d>=0||c>=0)?NN(x[d])-NN(x[c]):sg(x[b]);const q=RULES.find(z=>z[0].test(n));let k=q?q[1]:0;if(!q&&g>=0&&/expense|indirect/i.test(x[g]))k=7;return{n,net,k}}).filter(x=>x.n&&x.net);drawTB()};
+function drawTB(){$('tbrev').innerHTML=`<div class="tw" style="max-height:340px;overflow:auto"><table><thead><tr><th>Account</th><th>Net (Dr +, Cr −)</th><th>Treat as</th></tr></thead><tbody>${TB.map((x,i)=>`<tr><td>${esc(x.n)}</td><td>${x.net.toLocaleString('en-IN')}</td><td><select data-tb="${i}">${CATS.map((c,j)=>`<option value="${j}" ${j==x.k?'selected':''}>${c}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`}
+$('tbrev').onchange=e=>{if(e.target.dataset.tb!=null)TB[e.target.dataset.tb].k=+e.target.value};
+$('tbapply').onclick=()=>{LOG=[];if(!TB.length){log('Upload a trial balance first.');return showLog()}
+ const s=k=>TB.filter(x=>x.k==k).reduce((a,x)=>a+x.net,0),to=-s(1),oth=-s(2),pu=s(3),op=Math.abs(s(4)),cl=Math.abs(s(5)),di=s(6),ind=s(7)+s(8)+s(9)+s(10)+s(11),gp=to+cl-op-pu-di,np=gp+oth-ind,pre='Form3cdAccountingRatioCalculations.'+$('rblk').value+'.';
+ Object.entries({TotalTurnover:to,GrosProfNumertr:gp,NetProfNumertr:np,StockTradeNmrtr:cl}).forEach(([k,v])=>ST.f[pre+k]=Math.round(v));
+ [[8,'PENALTY'],[9,'PERSONAL'],[10,'CLUBFEE'],[11,'CAPITAL']].forEach(([k,t])=>{const v=s(k),r=ST.t.Form3cdDebPLExpnditure.find(x=>x.ParticularType==t);if(v&&r){r.Amount=Math.round(v);r.Particulars='As per books';log(`Clause 21 ${t}: ${Math.round(v)} from ${TB.filter(x=>x.k==k).map(x=>x.n).join(', ')}`)}});
+ log(`Clause 40: turnover ${Math.round(to)}, gross profit ${Math.round(gp)}, net profit ${Math.round(np)}, closing stock ${Math.round(cl)}. Gross and net profit depend on how every account is classified.`);
+ if(!to)log('No account is treated as sales, so turnover is zero. Set the sales accounts above.');
+ if(!TB.some(x=>x.k==7))log('No account is treated as indirect expenses, so net profit is overstated. Classify them above or type net profit yourself.');
+ const tot=TB.reduce((a,x)=>a+x.net,0);if(Math.abs(tot)>1)log('The trial balance does not net to zero ('+Math.round(tot)+'). Check the file or the Dr/Cr signs.');
+ save();draw();showLog()};
+$('faf').onchange=async e=>{FA=await sheet(e.target.files[0]);$('fainfo').textContent=' '+FA.r.length+' rows read'};
+$('faapply').onclick=()=>{LOG=[];if(!FA){log('Upload a fixed asset register first.');return showLog()}
+ const{h,r}=FA,b=ci(h,/block|class|categ/i),rt=ci(h,/rate/i),o=ci(h,/opening|wdv|w\.d\.v/i),co=ci(h,/cost|addition|^amount/i),sv=ci(h,/sale|disposal|proceed/i);let u=ci(h,/use|install|commission/i);if(u<0)u=ci(h,/purchase|acqui|date/i);
+ const E=ST.f['Declaration.Point1.EndDate'],S0=ST.f['Declaration.Point1.StartDate'],M={};let nd=0;if(!E||!S0)log('Previous-year dates are blank in Form 3CB, so every addition was treated as used 180 days or more.');
+ r.forEach(x=>{const k=x[b]+'|'+NN(x[rt]),m=M[k]=M[k]||{DescBlockAssets:String(x[b]),RateOfDep:NN(x[rt]),OpeningWDV:0,Puttousefor180daysormore:0,Puttouseforlessthan180days:0,TotalDeduction:0};
+  m.OpeningWDV+=NN(x[o]);m.TotalDeduction+=NN(x[sv]);const c=NN(x[co]),d=u>=0?iso(x[u]):'';if(!c)return;
+  if(d&&S0&&d<S0)return;if(d&&E){const days=Math.round((new Date(E)-new Date(d))/864e5)+1;if(days<0){nd++;return}days>=180?m.Puttousefor180daysormore+=c:m.Puttouseforlessthan180days+=c}else{m.Puttousefor180daysormore+=c;if(!d)nd++}});
+ ST.t.Form3cdDeprAllw=Object.values(M);ST.t.Form3cdDeprAllw.forEach(m=>log(`Clause 18 block ${m.DescBlockAssets} at ${m.RateOfDep}%: opening ${Math.round(m.OpeningWDV)}, additions 180+ days ${Math.round(m.Puttousefor180daysormore)}, under 180 days ${Math.round(m.Puttouseforlessthan180days)}, sales ${Math.round(m.TotalDeduction)}`));
+ if(nd)log(nd+' addition row(s) had no usable use date or were put to use after year end. Check them.');
+ log('Block codes must be the codes used in the utility. Allowable depreciation and closing WDV are calculated for you.');save();draw();showLog()};
+$('form').addEventListener('change',async e=>{const i=e.target.dataset.imp;if(i==null)return;const t=TABLES[i],{h,r}=await sheet(e.target.files[0]),nz=x=>String(x).toLowerCase().replace(/[^a-z0-9]/g,''),map=t.cols.map(([k,l,ty])=>[k,ty,h.findIndex(x=>nz(x)==nz(k)||nz(x)==nz(l))]);
+ const rows=r.map(x=>{const o={...(t.d||{})};map.forEach(([k,ty,j])=>{if(j<0)return;const v=x[j];o[k]=ty=='n'?NN(v):ty=='d'?iso(v):String(v).trim()});return o});
+ ST.t[t.p].push(...rows);LOG=[`${t.l}: imported ${rows.length} rows. Columns matched: ${map.filter(m=>m[2]>=0).map(m=>m[0]).join(', ')||'none, so check the headings'}`];save();draw();showLog()});
+draw();
+</script></main></body></html>
